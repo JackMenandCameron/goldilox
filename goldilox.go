@@ -3,12 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	. "github.com/JackMenandCameron/goldilox/internal"
 	"os"
 	"strings"
-	. "github.com/JackMenandCameron/goldilox/internal"
 )
-
-var hadError bool = false
 
 func main() {
 	var err error = nil
@@ -21,22 +19,19 @@ func main() {
 		err = runPrompt()
 	}
 	if err != nil {
-		fmt.Println(err.Error())
+		if err.Error() != ErrorMessages[COMPILATION_ERROR] {
+			fmt.Println(err.Error())
+		}
+		os.Exit(65)
 	}
 }
 
 func RunFile(filename string) error {
-	fmt.Println("Running", filename)
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return err
 	}
 	err = run(string(data))
-	// TODO look into this because two different errors meaning
-	// different things hurts my head
-	if hadError {
-		os.Exit(65)
-	}
 	return err
 }
 
@@ -44,29 +39,30 @@ func runPrompt() error {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print(">")
-		line, _ := reader.ReadString('\n')
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
 		line = strings.Replace(line, "\n", "", -1)
+
+		// End on a blank line
 		if strings.Compare("", line) == 0 {
 			return nil
 		}
-		run(line)
-		hadError = false
 
+		if err = run(line); err != nil {
+			fmt.Println(err.Error())
+		}
 	}
 }
 
 func run(source string) error {
-	s := NewScanner(source)
+	reporter := NewReporter()
+	s, err := NewScanner(source, reporter)
+	if err != nil {
+		return err
+	}
 	s.ScanTokens()
-	fmt.Println(s.Tokens)
-	return nil
-}
-
-func compError(line int, message string) {
-	report(line, "", message)
-}
-
-func report(line int, where string, message string) {
-	fmt.Printf("[line %d] Error %s: %s", line, where, message)
-	hadError = true
+	reporter.Report()
+	return reporter.HasError()
 }

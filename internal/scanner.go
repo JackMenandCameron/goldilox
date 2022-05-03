@@ -1,7 +1,9 @@
 package internal
 
 import (
-// "strconv"
+	// "strconv"
+
+	"errors"
 )
 
 var keywords = map[string]TokenType{
@@ -26,18 +28,22 @@ var keywords = map[string]TokenType{
 type Scanner struct {
 	source  string
 	Tokens  []Token
+	Reporter *Reporter
 	start   int
 	current int
 	line    int
 }
 
-func NewScanner(source string) *Scanner {
-	return &Scanner{source: source, start: 0, current: 0, line: 1}
+func NewScanner(source string, reporter *Reporter) (*Scanner, error) {
+	if source == "" {
+		return nil, errors.New(ErrorMessages[NEW_SCANNER_NO_SOURCE])
+	}
+	return &Scanner{source: source, start: 0, Reporter: reporter, current: 0, line: 1}, nil
 }
 
-func (s *Scanner) ScanTokens() {
+func (s *Scanner) ScanTokens() error {
 	if s.source == "" {
-		panic("no source given to scanner")
+		return errors.New(ErrorMessages[SCAN_TOKEN_NO_SOURCE])
 	}
 
 	for !s.isAtEnd() {
@@ -46,11 +52,7 @@ func (s *Scanner) ScanTokens() {
 	}
 
 	s.Tokens = append(s.Tokens, MakeToken(EOF, s.line))
-	// Tutorial returns tokens here idk why
-}
-
-func (s *Scanner) isAtEnd() bool {
-	return s.current >= len(s.source)
+	return nil
 }
 
 func (s *Scanner) scanToken() {
@@ -103,45 +105,35 @@ func (s *Scanner) scanToken() {
 		}
 	case '/':
 		if s.match('/') {
-			//   // A comment goes until the end of the line.
+			// A comment goes until the end of the line.
 			for s.peek() != '\n' && !s.isAtEnd() {
 				s.advance()
 			}
 		} else {
 			s.addToken(SLASH)
 		}
-	case ' ':
+	case ' ': // Ignore whitespace
 	case '\r':
 	case '\t':
-		// Ignore whitespace.
 	case '\n':
 		s.line++
 	case '"':
 		s.readString()
-
-		//TODO this should have something to do with errors
 	default:
 		if isDigit(c) {
 			s.readNumber()
-
 		} else if isAlpha(c) {
 			s.readIdentifier()
 		} else {
-			// Lox.error(line, "Unexpected character.");
+			s.Reporter.compError(s.line, ErrorMessages[UNEXPECTED_CHARACTER])
 		}
-		return
 	}
 }
 
-func (s *Scanner) advance() byte {
-	c := s.source[s.current]
-	s.current = s.current + 1
-	return c
-}
+// Adding Tokens
+//
 
 func (s *Scanner) addToken(tt TokenType) {
-	// t := Token{Ttype: tt, Lexeme: s.source[s.start:s.current], Line: s.line}
-	// s.tokens = append(s.tokens, t)
 	s.addTokenV(tt, "")
 }
 
@@ -150,24 +142,9 @@ func (s *Scanner) addTokenV(tt TokenType, value string) {
 	s.Tokens = append(s.Tokens, t)
 }
 
-func (s *Scanner) match(expected byte) bool {
-	if s.isAtEnd() {
-		return false
-	}
-	if s.source[s.current] != expected {
-		return false
-	}
+// Reading Complex lexeme
+//
 
-	s.current++
-	return true
-}
-
-func (s *Scanner) peek() byte {
-	if s.isAtEnd() {
-		return 0
-	}
-	return s.source[s.current]
-}
 func (s *Scanner) readString() {
 	for s.peek() != '"' && !s.isAtEnd() {
 		if s.peek() == '\n' {
@@ -176,10 +153,10 @@ func (s *Scanner) readString() {
 		s.advance()
 	}
 
-	// if (s.isAtEnd()) {
-	//   Lox.error(line, "Unterminated string.");
-	//   return;
-	// }
+	if (s.isAtEnd()) {
+	  s.Reporter.compError(s.line, ErrorMessages[UNTERMINATED_STRING])
+	  return;
+	}
 
 	// The closing ".
 	s.advance()
@@ -218,6 +195,38 @@ func (s *Scanner) readIdentifier() {
 		iType = IDENTIFIER
 	}
 	s.addToken(iType)
+}
+
+// Helper Functions
+//
+
+func (s *Scanner) isAtEnd() bool {
+	return s.current >= len(s.source)
+}
+
+func (s *Scanner) advance() byte {
+	c := s.source[s.current]
+	s.current = s.current + 1
+	return c
+}
+
+func (s *Scanner) match(expected byte) bool {
+	if s.isAtEnd() {
+		return false
+	}
+	if s.source[s.current] != expected {
+		return false
+	}
+
+	s.current++
+	return true
+}
+
+func (s *Scanner) peek() byte {
+	if s.isAtEnd() {
+		return 0
+	}
+	return s.source[s.current]
 }
 
 func (s *Scanner) peekNext() byte {
