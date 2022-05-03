@@ -1,0 +1,7 @@
+var condition = false
+
+if (condition) {
+  print "yes";
+} else {
+  print "no";
+}
